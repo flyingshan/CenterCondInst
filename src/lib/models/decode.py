@@ -533,7 +533,14 @@ def ctseg_decode(heat, wh, seg_feat ,conv_weight ,reg=None, cat_spec_wh=False, K
     mask = torch.zeros((batch, K,h,w)).to(device=seg_feat.device)
     x_range = torch.arange(w).float().to(device=seg_feat.device)
     y_range = torch.arange(h).float().to(device=seg_feat.device)
-    y_grid, x_grid = torch.meshgrid([y_range, x_range])
+    # to replace torch.meshgrid
+    a = torch.linspace(0, w-1, w)
+    b = torch.linspace(0, h-1, h)
+    x_grid = a.repeat(h, 1).cuda()
+    y_grid = b.repeat(w, 1).cuda()
+    # end
+#     y_grid, x_grid = torch.meshgrid([y_range, x_range])
+    
     weight = _tranpose_and_gather_feat(conv_weight, inds)
     for i in range(batch):
         conv1w, conv1b, conv2w, conv2b, conv3w, conv3b = \
@@ -542,19 +549,20 @@ def ctseg_decode(heat, wh, seg_feat ,conv_weight ,reg=None, cat_spec_wh=False, K
                                               feat_channel, 1], dim=-1)
         y_rel_coord = (y_grid[None, None] - ys[i].unsqueeze(-1).unsqueeze(-1).float()) / 128.
         x_rel_coord = (x_grid[None, None] - xs[i].unsqueeze(-1).unsqueeze(-1).float()) / 128.
+        y_rel_coord = y_rel_coord.transpose(3, 2)
         feat = seg_feat[i][None].repeat([K, 1, 1, 1])
         feat = torch.cat([feat, x_rel_coord, y_rel_coord], dim=1).view(1, -1, h, w)
 
         conv1w = conv1w.contiguous().view(-1, feat_channel + 2, 1, 1)
-        conv1b = conv1b.contiguous().flatten()
+        conv1b = conv1b.contiguous().view(-1)
         feat = F.conv2d(feat, conv1w, conv1b, groups=K).relu()
 
         conv2w = conv2w.contiguous().view(-1, feat_channel, 1, 1)
-        conv2b = conv2b.contiguous().flatten()
+        conv2b = conv2b.contiguous().view(-1)
         feat = F.conv2d(feat, conv2w, conv2b, groups=K).relu()
 
         conv3w = conv3w.contiguous().view(-1, feat_channel, 1, 1)
-        conv3b = conv3b.contiguous().flatten()
+        conv3b = conv3b.contiguous().view(-1)
         feat = F.conv2d(feat, conv3w, conv3b, groups=K).sigmoid().squeeze()
         mask[i] = feat
 

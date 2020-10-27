@@ -88,7 +88,7 @@ def test(opt):
   Logger(opt)
   Detector = detector_factory[opt.task]
   
-  split = 'val' if not opt.trainval else 'test'
+  split = 'test'
   dataset = Dataset(opt, split)
   detector = Detector(opt)
 
@@ -97,7 +97,7 @@ def test(opt):
   for ind in tqdm(range(num_iters)):
     img_id = dataset.images[ind]
     img_info = dataset.coco.loadImgs(ids=[img_id])[0]
-    img_path = os.path.join(dataset.img_dir, img_info['file_name'])
+    img_path = os.path.join(dataset.img_dir, img_info['file_name']) + '.jpg' # resolve the path bug, by he.
 
     if opt.task == 'ddd':
       ret = detector.run(img_path, img_info['calib'])

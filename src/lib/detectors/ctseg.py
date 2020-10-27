@@ -52,7 +52,7 @@ class CtsegDetector(BaseDetector):
         dets = dets.reshape(1, -1, dets.shape[2])
         dets = ctseg_post_process(
             dets.copy(),seg.copy(), [meta['c']], [meta['s']],
-            meta['out_height'], meta['out_width'],*meta['img_size'], self.opt.num_classes)
+            meta['out_height'], meta['out_width'],meta['img_size'][0], meta['img_size'][1], self.opt.num_classes)
         return dets[0]
 
     def merge_outputs(self, detections):
