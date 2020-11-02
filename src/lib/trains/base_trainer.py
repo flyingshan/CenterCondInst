@@ -39,7 +39,7 @@ class BaseTrainer(object):
     for state in self.optimizer.state.values():
       for k, v in state.items():
         if isinstance(v, torch.Tensor):
-          state[k] = v.to(device=device, non_blocking=True)
+          state[k] = v.to(device=device) # , non_blocking=True
 
   def run_epoch(self, phase, epoch, data_loader):
     model_with_loss = self.model_with_loss
@@ -50,7 +50,7 @@ class BaseTrainer(object):
         model_with_loss = self.model_with_loss.module
       model_with_loss.eval()
       torch.cuda.empty_cache()
-
+    print('!!!!!!!!!!!!!!!')
     opt = self.opt
     results = {}
     data_time, batch_time = AverageMeter(), AverageMeter()

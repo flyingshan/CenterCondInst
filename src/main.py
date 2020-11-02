@@ -17,6 +17,7 @@ from logger import Logger
 from datasets.dataset_factory import get_dataset
 from trains.train_factory import train_factory
 
+# python main.py ctseg --exp_id coco_dla_1x --batch_size 4 --lr 1.25e-4 --gpus 0 --num_workers 4
 
 def main(opt):
   torch.manual_seed(opt.seed)

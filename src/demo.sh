@@ -1,0 +1,1 @@
+python demo.py ctseg --exp_id coco_dla_1x --load_model ../exp/ctseg/coco_dla_1x/epoch_75.pth --demo ../images/

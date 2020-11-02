@@ -17,9 +17,9 @@ time_stats = ['tot', 'load', 'pre', 'net', 'dec', 'post', 'merge']
 def demo(opt):
   opt.debug = max(opt.debug, 1)
   Detector = detector_factory[opt.task]
+  
   detector = Detector(opt)
-
-
+  
   if opt.demo == 'webcam' or \
     opt.demo[opt.demo.rfind('.') + 1:].lower() in video_ext:
     cam = cv2.VideoCapture(0 if opt.demo == 'webcam' else opt.demo)
@@ -53,4 +53,5 @@ def demo(opt):
       print(time_str)
 if __name__ == '__main__':
   opt = opts().init()
+  
   demo(opt)

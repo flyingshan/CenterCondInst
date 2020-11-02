@@ -1,0 +1,1 @@
+python test.py ctseg --exp_id coco_dla_1x --resume

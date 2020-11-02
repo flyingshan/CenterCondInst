@@ -1,0 +1,1 @@
+python main.py ctseg --exp_id coco_dla_1x --batch_size 4 --lr 1.25e-4 --gpus 0 --num_workers 4 --num_epochs 70

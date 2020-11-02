@@ -250,8 +250,10 @@ class Debugger(object):
         idx = 0
       prefix=idx
       np.savetxt(path + '/id.txt', np.ones(1) * (idx + 1), fmt='%d')
+#     print('!!!!', prefix)
+    prefix = prefix.split("/")[2].split(".")[0]
     for i, v in self.imgs.items():
-      cv2.imwrite(path + '/{}{}.png'.format(prefix, i), v)
+      cv2.imwrite(path + '/{}_ctseg.jpg'.format(prefix), v)
 
   def remove_side(self, img_id, img):
     if not (img_id in self.imgs):
@@ -447,19 +449,7 @@ pascal_class_name = ["aeroplane", "bicycle", "bird", "boat", "bottle", "bus",
   "person", "pottedplant", "sheep", "sofa", "train", "tvmonitor"]
 
 coco_class_name = [
-     'person', 'bicycle', 'car', 'motorcycle', 'airplane',
-     'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
-     'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse',
-     'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
-     'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis',
-     'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
-     'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass',
-     'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich',
-     'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake',
-     'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv',
-     'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave',
-     'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase',
-     'scissors', 'teddy bear', 'hair drier', 'toothbrush'
+     'ship'
 ]
 
 color_list = np.array(

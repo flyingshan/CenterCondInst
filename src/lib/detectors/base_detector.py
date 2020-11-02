@@ -86,10 +86,10 @@ class BaseDetector(object):
                         theme=self.opt.debugger_theme)
     start_time = time.time()
     pre_processed = False
-#     print(type(image_or_path_or_tensor))
+#     print(type(image_or_path_or_tensor),image_or_path_or_tensor)
     if isinstance(image_or_path_or_tensor, np.ndarray):
       image = image_or_path_or_tensor
-    elif type(image_or_path_or_tensor) == type ('unicode type'.decode('utf-8')):  # python 2 vs 3 problem, modified by he. 
+    elif type(image_or_path_or_tensor) == type (''):   ## ???????
       image = cv2.imread(image_or_path_or_tensor)
     else:
       image = image_or_path_or_tensor['image'][0].numpy()
@@ -140,7 +140,7 @@ class BaseDetector(object):
     tot_time += end_time - start_time
 
     if self.opt.debug >= 1:
-      self.show_results(debugger, image, results)
+      self.show_results(debugger, image, results, img_name=image_or_path_or_tensor)
     
     return {'results': results, 'tot': tot_time, 'load': load_time,
             'pre': pre_time, 'net': net_time, 'dec': dec_time,

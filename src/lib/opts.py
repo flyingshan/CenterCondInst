@@ -285,13 +285,13 @@ class opts(object):
     if opt.resume and opt.load_model == '':
       model_path = opt.save_dir[:-4] if opt.save_dir.endswith('TEST') \
                   else opt.save_dir
-      opt.load_model = os.path.join(model_path, 'model_last.pth')
+      opt.load_model = os.path.join(model_path, 'model_pretrained.pth')
     return opt
 
   def update_dataset_info_and_set_heads(self, opt, dataset):
     input_h, input_w = dataset.default_resolution
     opt.mean, opt.std = dataset.mean, dataset.std
-    opt.num_classes = dataset.num_classes
+    opt.num_classes = 1
 
     # input_h(w): opt.input_h overrides opt.input_res overrides dataset default
     input_h = opt.input_res if opt.input_res > 0 else input_h
@@ -372,7 +372,7 @@ class opts(object):
     class Struct:
       def __init__(self, entries):
         for k, v in entries.items():
-          self.__setattr__(k, v)
+          setattr(self, k, v)
     opt = self.parse(args)
     dataset = Struct(default_dataset_info[opt.task])
     opt.dataset = dataset.dataset
