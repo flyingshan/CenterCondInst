@@ -1,5 +1,8 @@
 
 
+
 *.json
 *.jpg
 *.zip
+*.pyc
+
