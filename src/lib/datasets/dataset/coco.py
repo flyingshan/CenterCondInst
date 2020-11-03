@@ -26,6 +26,10 @@ class COCO(data.Dataset):
       self.annot_path = os.path.join(
           self.data_dir, 'annotations', 
           'test.json').format(split) #
+    elif split == 'val':
+      self.annot_path = os.path.join(
+          self.data_dir, 'annotations', 
+          'test.json').format(split) #
     else:
       if opt.task == 'exdet':
         self.annot_path = os.path.join(

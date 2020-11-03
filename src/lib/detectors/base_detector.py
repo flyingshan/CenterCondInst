@@ -22,6 +22,7 @@ class BaseDetector(object):
     
     print('Creating model...')
     self.model = create_model(opt.arch, opt.heads, opt.head_conv)
+#     print('!!!!', opt.load_model)
     self.model = load_model(self.model, opt.load_model)
     self.model = self.model.to(opt.device)
     self.model.eval()
@@ -89,7 +90,7 @@ class BaseDetector(object):
 #     print(type(image_or_path_or_tensor),image_or_path_or_tensor)
     if isinstance(image_or_path_or_tensor, np.ndarray):
       image = image_or_path_or_tensor
-    elif type(image_or_path_or_tensor) == type (''):   ## ???????
+    elif type(image_or_path_or_tensor) == type ('') or type(image_or_path_or_tensor) == type ('unicode type'.decode('utf-8')):   ## ???????
       image = cv2.imread(image_or_path_or_tensor)
     else:
       image = image_or_path_or_tensor['image'][0].numpy()

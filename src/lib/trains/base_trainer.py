@@ -50,7 +50,7 @@ class BaseTrainer(object):
         model_with_loss = self.model_with_loss.module
       model_with_loss.eval()
       torch.cuda.empty_cache()
-    print('!!!!!!!!!!!!!!!')
+#     print('!!!!!!!!!!!!!!!')
     opt = self.opt
     results = {}
     data_time, batch_time = AverageMeter(), AverageMeter()

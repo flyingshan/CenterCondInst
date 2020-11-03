@@ -1,1 +1,1 @@
-python test.py ctseg --exp_id coco_dla_1x --resume
+python test.py ctseg --exp_id coco_dla_1x --load_model model_40.pth

@@ -68,7 +68,7 @@ class opts(object):
                                   '-1 for default setting: '
                                   '64 for resnets and 256 for dla.')
     self.parser.add_argument('--down_ratio', type=int, default=4,
-                             help='output stride. Currently only supports 4.')
+                             help='ocutput stride. Currently only supports 4.')
 
     # input
     self.parser.add_argument('--input_res', type=int, default=-1, 
@@ -105,7 +105,7 @@ class opts(object):
                              help='multi scale test augmentation.')
     self.parser.add_argument('--nms', action='store_true',
                              help='run nms in testing.')
-    self.parser.add_argument('--K', type=int, default=100,
+    self.parser.add_argument('--K', type=int, default=100, # ORIGIN = 100
                              help='max number of output objects.') 
     self.parser.add_argument('--not_prefetch_test', action='store_true',
                              help='not use parallal data pre-processing.')
@@ -286,6 +286,10 @@ class opts(object):
       model_path = opt.save_dir[:-4] if opt.save_dir.endswith('TEST') \
                   else opt.save_dir
       opt.load_model = os.path.join(model_path, 'model_pretrained.pth')
+    else:
+      model_path = opt.save_dir[:-4] if opt.save_dir.endswith('TEST') \
+                  else opt.save_dir
+      opt.load_model = os.path.join(model_path, opt.load_model)
     return opt
 
   def update_dataset_info_and_set_heads(self, opt, dataset):

@@ -28,5 +28,5 @@ python demo.py ctseg --exp_id coco_dla_1x --load_model ../exp/ctseg/coco_dla_1x/
 ## Reference
 1. [CenterNet](https://github.com/xingyizhou/CenterNet)
 2. [CondInst](https://github.com/Epiphqny/CondInst)
-3. [CondInst](https://github.com/aim-uofa/AdelaiDet/)
+3. [CondInst-AdelaiDet](https://github.com/aim-uofa/AdelaiDet/)
 4. [CenterNet-CondInst](https://github.com/CaoWGG/CenterNet-CondInst)
