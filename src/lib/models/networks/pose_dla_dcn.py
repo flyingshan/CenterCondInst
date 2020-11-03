@@ -448,15 +448,15 @@ class DLASeg(nn.Module):
             if head_conv > 0:
               if head == "seg_feat": # classes = 8 here
                   fc = nn.Sequential( # the middle channel set to 128, same as the paper.
-                      nn.Conv2d(channels[self.first_level], 128,
+                      nn.Conv2d(channels[self.first_level], 256,
                                 kernel_size=3, padding=1, bias=False),
-                      nn.BatchNorm2d(128),
+                      nn.BatchNorm2d(256),
                       nn.ReLU(inplace=True),
-                      nn.Conv2d(128, 128,
+                      nn.Conv2d(256, 256,
                                    kernel_size=3, padding=1, bias=False),
-                      nn.BatchNorm2d(128),
+                      nn.BatchNorm2d(256),
                       nn.ReLU(inplace=True),
-                      nn.Conv2d(128, classes,
+                      nn.Conv2d(256, classes,
                                 kernel_size=1, padding=0, bias=False),
                       nn.BatchNorm2d(classes),
                       nn.ReLU(inplace=True))
