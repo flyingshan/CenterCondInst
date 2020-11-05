@@ -5,7 +5,7 @@ from __future__ import print_function
 import torch
 import numpy as np
 
-from models.losses import FocalLoss,DiceLoss
+from models.losses import FocalLoss,DiceLoss,FastDiceLoss
 from models.losses import RegL1Loss, RegLoss, NormRegL1Loss, RegWeightedL1Loss
 from models.decode import ctdet_decode
 from models.utils import _sigmoid
@@ -24,7 +24,8 @@ class CtsegLoss(torch.nn.Module):
         self.crit_wh = torch.nn.L1Loss(reduction='sum') if opt.dense_wh else \
             NormRegL1Loss() if opt.norm_wh else \
                 RegWeightedL1Loss() if opt.cat_spec_wh else self.crit_reg
-        self.crit_mask = DiceLoss(opt.seg_feat_channel)
+        ##########
+        self.crit_mask = FastDiceLoss(opt.seg_feat_channel)
         self.opt = opt
 
     def forward(self, outputs, batch):
@@ -70,7 +71,7 @@ class CtsegLoss(torch.nn.Module):
                                           batch['ind'], batch['reg']) / opt.num_stacks
 
             mask_loss+=self.crit_mask(output['seg_feat'],output['conv_weight'],
-                                      batch['reg_mask'],batch['ind'],batch['instance_mask'])
+                                      batch['reg_mask'],batch['ind'],batch['instance_mask'], batch['instance_num'])
 
         loss = opt.hm_weight * hm_loss + opt.wh_weight * wh_loss + \
                opt.off_weight * off_loss + opt.seg_weight * mask_loss

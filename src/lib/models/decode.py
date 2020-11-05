@@ -534,12 +534,12 @@ def ctseg_decode(heat, wh, seg_feat ,conv_weight ,reg=None, cat_spec_wh=False, K
     x_range = torch.arange(w).float().to(device=seg_feat.device)
     y_range = torch.arange(h).float().to(device=seg_feat.device)
     # to replace torch.meshgrid
-    a = torch.linspace(0, w-1, w)
-    b = torch.linspace(0, h-1, h)
-    x_grid = a.repeat(h, 1).cuda()
-    y_grid = b.repeat(w, 1).cuda()
+    # a = torch.linspace(0, w-1, w)
+    # b = torch.linspace(0, h-1, h)
+    # x_grid = a.repeat(h, 1).cuda()
+    # y_grid = b.repeat(w, 1).cuda()
     # end
-#     y_grid, x_grid = torch.meshgrid([y_range, x_range])
+    y_grid, x_grid = torch.meshgrid([y_range, x_range])
     
     weight = _tranpose_and_gather_feat(conv_weight, inds)
     for i in range(batch):
@@ -549,24 +549,165 @@ def ctseg_decode(heat, wh, seg_feat ,conv_weight ,reg=None, cat_spec_wh=False, K
                                               feat_channel, 1], dim=-1)
         y_rel_coord = (y_grid[None, None] - ys[i].unsqueeze(-1).unsqueeze(-1).float()) / 128.
         x_rel_coord = (x_grid[None, None] - xs[i].unsqueeze(-1).unsqueeze(-1).float()) / 128.
-        y_rel_coord = y_rel_coord.transpose(3, 2)
+        # y_rel_coord = y_rel_coord.transpose(3, 2)
         feat = seg_feat[i][None].repeat([K, 1, 1, 1])
         feat = torch.cat([feat, x_rel_coord, y_rel_coord], dim=1).view(1, -1, h, w)
 
         conv1w = conv1w.contiguous().view(-1, feat_channel + 2, 1, 1)
-        conv1b = conv1b.contiguous().view(-1)
+        conv1b = conv1b.contiguous().flatten()
         feat = F.conv2d(feat, conv1w, conv1b, groups=K).relu()
 
         conv2w = conv2w.contiguous().view(-1, feat_channel, 1, 1)
-        conv2b = conv2b.contiguous().view(-1)
+        conv2b = conv2b.contiguous().flatten()
         feat = F.conv2d(feat, conv2w, conv2b, groups=K).relu()
 
         conv3w = conv3w.contiguous().view(-1, feat_channel, 1, 1)
-        conv3b = conv3b.contiguous().view(-1)
+        conv3b = conv3b.contiguous().flatten()
         feat = F.conv2d(feat, conv3w, conv3b, groups=K).sigmoid().squeeze()
         mask[i] = feat
 
     return detections,mask
+
+def ctseg_decode_2(heat, wh, seg_feat, conv_weight, reg=None, cat_spec_wh=False, K=100):
+
+    def produce_mask_head_inputs(seg_feat, nums, x_grid, y_grid, x, y, batch_size):
+        num_obj = nums[0].item()
+        y_rel_coord = (y_grid[None, None] - y[0, :num_obj].unsqueeze(-1).unsqueeze(
+            -1).float()) / 128.
+        x_rel_coord = (x_grid[None, None] - x[0, :num_obj].unsqueeze(-1).unsqueeze(
+            -1).float()) / 128.
+        feat = seg_feat[0][None].repeat([num_obj, 1, 1, 1])
+        # print(y_grid.size(), y_grid[None, None].size())
+        # print(feat.size(), x_rel_coord.size(), y_rel_coord.size())
+        feat = torch.cat([feat, x_rel_coord, y_rel_coord], dim=1).view(1, -1, h, w)
+
+        for i in range(1, batch_size):
+            num_obj = nums[i].item()
+            y_rel_coord = (y_grid[None, None] - y[i, :num_obj].unsqueeze(-1).unsqueeze(
+                -1).float()) / 128.
+            x_rel_coord = (x_grid[None, None] - x[i, :num_obj].unsqueeze(-1).unsqueeze(
+                -1).float()) / 128.
+
+            feat_temp = seg_feat[i][None].repeat([num_obj, 1, 1, 1])
+            feat_temp = torch.cat([feat_temp, x_rel_coord, y_rel_coord], dim=1).view(1, -1, h, w)
+            feat = torch.cat([feat, feat_temp], dim=1)
+        return feat
+
+    def parse_dynamic_params(params, channels, weight_nums, bias_nums):
+        assert params.dim() == 2
+        assert len(weight_nums) == len(bias_nums)
+        assert params.size(1) == sum(weight_nums) + sum(bias_nums)
+
+        num_insts = params.size(0)
+        num_layers = len(weight_nums)
+        params_splits = list(torch.split_with_sizes(
+            params, weight_nums + bias_nums, dim=1
+        ))
+
+        weight_splits = params_splits[:num_layers]
+        bias_splits = params_splits[num_layers:]
+
+        for l in range(num_layers):
+            if l < num_layers - 1:
+                # out_channels x in_channels x 1 x 1
+                weight_splits[l] = weight_splits[l].contiguous().view(num_insts * channels, -1, 1, 1)
+                bias_splits[l] = bias_splits[l].contiguous().view(num_insts * channels)
+            else:
+                # out_channels x in_channels x 1 x 1
+                weight_splits[l] = weight_splits[l].contiguous().view(num_insts * 1, -1, 1, 1)
+                bias_splits[l] = bias_splits[l].contiguous().view(num_insts)
+        return weight_splits, bias_splits
+
+    def produce_nums(num_layers, in_channels, channels):
+        # 这里就设置了mask_head的weight和bias参数数量
+        weight_nums, bias_nums = [], []
+        for l in range(num_layers):
+            if l == 0:
+                weight_nums.append((in_channels + 2) * channels)
+                bias_nums.append(channels)
+            elif l == num_layers - 1:
+                weight_nums.append(channels * 1)
+                bias_nums.append(1)
+            else:
+                weight_nums.append(channels * channels)
+                bias_nums.append(channels)
+        return weight_nums, bias_nums
+
+    def produce_inst_weight(weight, nums, batch_size):
+        # resize weight from (N, max_obj, 169) to weight_new (n_inst, 169)
+        weight_new = weight[0, :nums[0].item(), :]
+        for i in range(1, batch_size):
+            weight_new = torch.cat([weight_new, weight[i, :nums[i].item(), :]], dim=0)
+        return weight_new
+
+    def forward_mask_parallel(features, weights, biases, num_insts):
+        assert features.dim() == 4
+        n_layers = len(weights)
+        x = features
+        for i, (w, b) in enumerate(zip(weights, biases)):
+            x = F.conv2d(
+                x, w, bias=b,
+                stride=1, padding=0,
+                groups=num_insts
+            )
+            if i < n_layers - 1:
+                x = F.relu(x)
+        return x
+
+    batch, cat, height, width = heat.size()
+
+    # heat = torch.sigmoid(heat)
+    # perform nms on heatmaps
+    heat = _nms(heat)
+
+    K = 25 # K is a key parameter for inference effieciency.
+         # it should be larger than the maximum target number
+         # in any test image.
+         # 或者更改实现，设置阈值从而动态限制K
+    scores, inds, clses, ys, xs = _topk(heat, K=K)
+    if reg is not None:
+        reg = _tranpose_and_gather_feat(reg, inds)
+        reg = reg.view(batch, K, 2)
+        xs = xs.view(batch, K, 1) + reg[:, :, 0:1]
+        ys = ys.view(batch, K, 1) + reg[:, :, 1:2]
+    else:
+        xs = xs.view(batch, K, 1) + 0.5
+        ys = ys.view(batch, K, 1) + 0.5
+    wh = _tranpose_and_gather_feat(wh, inds)
+    if cat_spec_wh:
+        wh = wh.view(batch, K, cat, 2)
+        clses_ind = clses.view(batch, K, 1, 1).expand(batch, K, 1, 2).long()
+        wh = wh.gather(2, clses_ind).view(batch, K, 2)
+    else:
+        wh = wh.view(batch, K, 2)
+    clses = clses.view(batch, K, 1).float()
+    scores = scores.view(batch, K, 1)
+    bboxes = torch.cat([xs - wh[..., 0:1] / 2,
+                        ys - wh[..., 1:2] / 2,
+                        xs + wh[..., 0:1] / 2,
+                        ys + wh[..., 1:2] / 2], dim=2)
+
+    detections = torch.cat([bboxes, scores, clses], dim=2)
+
+    # feat_channel = seg_feat.size(1)
+    h, w = seg_feat.size(-2), seg_feat.size(-1)
+    # mask = torch.zeros((batch, K, h, w)).to(device=seg_feat.device)
+    x_range = torch.arange(w).float().to(device=seg_feat.device)
+    y_range = torch.arange(h).float().to(device=seg_feat.device)
+    # to replace torch.meshgrid
+    y_grid, x_grid = torch.meshgrid([y_range, x_range])
+    weight = _tranpose_and_gather_feat(conv_weight, inds)
+    nums = torch.tensor([K]).repeat([batch])
+    # (n_inst, 169)
+    weight_new = produce_inst_weight(weight, nums, batch)
+    # produce feat(1, n_inst*10, H, W)
+    feat_new = produce_mask_head_inputs(seg_feat, nums, x_grid, y_grid, xs, ys, batch)
+    weight_nums, bias_nums = produce_nums(num_layers=3, in_channels=8, channels=8)
+    weights, biases = parse_dynamic_params(weight_new, 8, weight_nums, bias_nums)
+    num_inst = nums.sum().item()
+    mask_scores = forward_mask_parallel(feat_new, weights, biases, num_inst).sigmoid()[0]
+    mask = mask_scores.contiguous().view(batch, K, h, w)
+    return detections, mask
 
 def multi_pose_decode(
     heat, wh, kps, reg=None, hm_hp=None, hp_offset=None, K=100):

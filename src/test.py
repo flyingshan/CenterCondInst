@@ -30,7 +30,7 @@ class PrefetchDataset(torch.utils.data.Dataset):
   def __getitem__(self, index):
     img_id = self.images[index]
     img_info = self.load_image_func(ids=[img_id])[0]
-    img_path = os.path.join(self.img_dir, img_info['file_name'])
+    img_path = os.path.join(self.img_dir, img_info['file_name']) + '.jpg'
     image = cv2.imread(img_path)
     images, meta = {}, {}
     for scale in opt.test_scales:
@@ -54,6 +54,7 @@ def prefetch_test(opt):
   Detector = detector_factory[opt.task]
   
   split = 'val' if not opt.trainval else 'test'
+  # print(split)
   dataset = Dataset(opt, split)
   detector = Detector(opt)
   
@@ -109,4 +110,4 @@ def test(opt):
 
 if __name__ == '__main__':
   opt = opts().parse()
-  test(opt)
+  prefetch_test(opt)

@@ -162,7 +162,8 @@ class DiceLoss(nn.Module):
         super(DiceLoss, self).__init__()
         self.feat_channel=feat_channel
 
-    def forward(self, seg_feat, conv_weight, mask,ind, target):
+    def forward(self, seg_feat, conv_weight, mask, ind, target):
+
         mask_loss=0.
         batch_size = seg_feat.size(0)
         weight = _tranpose_and_gather_feat(conv_weight, ind)
@@ -171,14 +172,21 @@ class DiceLoss(nn.Module):
         x_range = torch.arange(w).float().to(device=seg_feat.device)
         y_range = torch.arange(h).float().to(device=seg_feat.device)
         # to replace torch.meshgrid
-        a = torch.linspace(0, w-1, w)
-        b = torch.linspace(0, h-1, h)
-        x_grid = a.repeat(h, 1).cuda()
-        y_grid = b.repeat(w, 1).cuda()
+        # a = torch.linspace(0, w-1, w)
+        # b = torch.linspace(0, h-1, h)
+        # x_grid = a.repeat(h, 1).cuda()
+        # y_grid = b.repeat(w, 1).cuda()
         # end
-#         y_grid, x_grid = torch.meshgrid([y_range, x_range])
+        y_grid, x_grid = torch.meshgrid([y_range, x_range])
+        # torch.Size([4, 169, 128, 128]) torch.Size([4, 128]) torch.Size([4, 128, 169])
+        # print(conv_weight.size(), ind.size(), weight.size())
+        # print(seg_feat.size())[4, 8, 128, 128])
+        # print(mask.size()) ([4, 128])
         for i in range(batch_size):
             num_obj = target[i].size(0)
+            # torch.Size([N, n_inst, 128, 128]) target.size()
+            # target是生成的gt，也就是target mask
+
             conv1w,conv1b,conv2w,conv2b,conv3w,conv3b= \
                 torch.split(weight[i,:num_obj],[(self.feat_channel+2)*self.feat_channel,self.feat_channel,
                                           self.feat_channel**2,self.feat_channel,
@@ -190,21 +198,231 @@ class DiceLoss(nn.Module):
             feat = torch.cat([feat,x_rel_coord, y_rel_coord],dim=1).view(1,-1,h,w)
 
             conv1w=conv1w.contiguous().view(-1,self.feat_channel+2,1,1)
-            conv1b=conv1b.contiguous().view(-1) # .flatten() -> .view(-1)
+            conv1b=conv1b.contiguous().flatten() # .flatten() -> .view(-1)
             feat = F.conv2d(feat,conv1w,conv1b,groups=num_obj).relu()
 
             conv2w=conv2w.contiguous().view(-1,self.feat_channel,1,1)
-            conv2b=conv2b.contiguous().view(-1) #
+            conv2b=conv2b.contiguous().flatten() #
             feat = F.conv2d(feat,conv2w,conv2b,groups=num_obj).relu()
 
             conv3w=conv3w.contiguous().view(-1,self.feat_channel,1,1)
-            conv3b=conv3b.contiguous().view(-1) #
+            conv3b=conv3b.contiguous().flatten() #
             feat = F.conv2d(feat,conv3w,conv3b,groups=num_obj).sigmoid().squeeze()
 
             true_mask = mask[i,:num_obj,None,None].float()
             mask_loss+=dice_loss(feat*true_mask,target[i]*true_mask)
 
         return mask_loss/batch_size
+
+class FastDiceLoss(nn.Module):
+    def __init__(self, feat_channel):
+        super(FastDiceLoss, self).__init__()
+        self.feat_channel = feat_channel
+
+    def forward(self, seg_feat, conv_weight, mask, ind, target, nums):
+        """
+        seg_feat: (N, 8, 128, 128) 应该是mask_branch输出的特征图
+        conv_weight: (N, 169, h, w)即为controller输出的特征图
+        mask: (N, max_obj) 其中有目标的为1，非目标的为0
+        ind: (N, max_obj) max_obj由 dataset/coco.py下的max_obj给出
+           含义是对应中心点的序号（也可以说是坐标信息）
+        target: (N, max_per_n_inst, h, w)为生成的gt mask
+            （类似于语义分割的gt，每张图片每个实例都有一个h*w的gt）
+        others:
+        # weight: size(N, max_obj, 169)应该是把每个ind指示的中心点处（只有前n_inst处ind有值，其它为0）的weight取出来
+        """
+
+        # end
+        #         y_grid, x_grid = torch.meshgrid([y_range, x_range])
+
+        def produce_mask_head_inputs(seg_feat, nums, x_grid, y_grid, x, y, batch_size):
+            num_obj = nums[0].item()
+            y_rel_coord = (y_grid[None, None] - y[0, :num_obj].unsqueeze(-1).unsqueeze(-1).unsqueeze(
+                -1).float()) / 128.
+            x_rel_coord = (x_grid[None, None] - x[0, :num_obj].unsqueeze(-1).unsqueeze(-1).unsqueeze(
+                -1).float()) / 128.
+            feat = seg_feat[0][None].repeat([num_obj, 1, 1, 1])
+            feat = torch.cat([feat, x_rel_coord, y_rel_coord], dim=1).view(1, -1, h, w)
+
+            for i in range(1, batch_size):
+                num_obj = nums[i].item()
+                y_rel_coord = (y_grid[None, None] - y[i, :num_obj].unsqueeze(-1).unsqueeze(-1).unsqueeze(
+                    -1).float()) / 128.
+                x_rel_coord = (x_grid[None, None] - x[i, :num_obj].unsqueeze(-1).unsqueeze(-1).unsqueeze(
+                    -1).float()) / 128.
+
+                feat_temp = seg_feat[i][None].repeat([num_obj, 1, 1, 1])
+                feat_temp = torch.cat([feat_temp, x_rel_coord, y_rel_coord], dim=1).view(1, -1, h, w)
+                feat = torch.cat([feat, feat_temp], dim=1)
+            return feat
+
+        def parse_dynamic_params(params, channels, weight_nums, bias_nums):
+            assert params.dim() == 2
+            assert len(weight_nums) == len(bias_nums)
+            assert params.size(1) == sum(weight_nums) + sum(bias_nums)
+
+            num_insts = params.size(0)
+            num_layers = len(weight_nums)
+            """
+            in size: (10, 169)
+            out size: 
+            torch.Size([10, 80])
+            torch.Size([10, 64])
+            torch.Size([10, 8])
+            torch.Size([10, 8])
+            torch.Size([10, 8])
+            torch.Size([10, 1])
+            """
+            params_splits = list(torch.split_with_sizes(
+                params, weight_nums + bias_nums, dim=1
+            ))
+
+            weight_splits = params_splits[:num_layers]
+            bias_splits = params_splits[num_layers:]
+
+            for l in range(num_layers):
+                if l < num_layers - 1:
+                    # out_channels x in_channels x 1 x 1
+                    weight_splits[l] = weight_splits[l].contiguous().view(num_insts * channels, -1, 1, 1)
+                    bias_splits[l] = bias_splits[l].contiguous().view(num_insts * channels)
+                else:
+                    # out_channels x in_channels x 1 x 1
+                    weight_splits[l] = weight_splits[l].contiguous().view(num_insts * 1, -1, 1, 1)
+                    bias_splits[l] = bias_splits[l].contiguous().view(num_insts)
+            """
+            out size: given num_insts = 10
+            weight_splits ->
+            torch.Size([80, 10, 1, 1])
+            torch.Size([80, 8, 1, 1])
+            torch.Size([10, 8, 1, 1])
+            bias_splits ->
+            torch.Size([80])
+            torch.Size([80])
+            torch.Size([10])
+            """
+            return weight_splits, bias_splits
+
+        def produce_nums(num_layers, in_channels, channels):
+            # 这里就设置了mask_head的weight和bias参数数量
+            weight_nums, bias_nums = [], []
+            for l in range(num_layers):
+                if l == 0:
+                    weight_nums.append((in_channels + 2) * channels)
+                    bias_nums.append(channels)
+                elif l == num_layers - 1:
+                    weight_nums.append(channels * 1)
+                    bias_nums.append(1)
+                else:
+                    weight_nums.append(channels * channels)
+                    bias_nums.append(channels)
+            return weight_nums, bias_nums
+
+        def produce_inst_weight(weight, nums, batch_size):
+            # resize weight from (N, max_obj, 169) to weight_new (n_inst, 169)
+            weight_new = weight[0, :nums[0].item(), :]
+            for i in range(1, batch_size):
+                weight_new = torch.cat([weight_new, weight[i, :nums[i].item(), :]], dim=0)
+            return weight_new
+
+        def forward_mask_parallel(features, weights, biases, num_insts):
+            """
+            :param features
+            :param weights: [w0, w1, ...]
+            :param bias: [b0, b1, ...]
+            :return:
+            """
+            assert features.dim() == 4
+            n_layers = len(weights)
+            x = features
+            for i, (w, b) in enumerate(zip(weights, biases)):
+                x = F.conv2d(
+                    x, w, bias=b,
+                    stride=1, padding=0,
+                    groups=num_insts
+                )
+                if i < n_layers - 1:
+                    x = F.relu(x)
+            return x
+
+        # def get_num_instances(target, batch_size):
+        #     num_inst = 0
+        #     for i in range(batch_size):
+        #         num_inst += target[i].size(0)
+        #     return num_inst
+
+        def get_true_masks(target, nums, batch_size):
+            """resize target from (N, max_per_n_inst, h, w) to weight_new (n_inst, h, w)"""
+            masks = target[0, :nums[0].item(), :, :]
+            for i in range(1, batch_size):
+                masks = torch.cat([masks, target[i, :nums[i].item(), :, :]], dim=0)
+            return masks
+
+
+        # original codes
+        mask_loss = 0.
+        batch_size = seg_feat.size(0)
+        weight = _tranpose_and_gather_feat(conv_weight, ind)
+
+        h, w = seg_feat.size(-2), seg_feat.size(-1)
+        x, y = ind % w, ind / w
+        x_range = torch.arange(w).float().to(device=seg_feat.device)
+        y_range = torch.arange(h).float().to(device=seg_feat.device)
+        y_grid, x_grid = torch.meshgrid([y_range, x_range])
+
+
+        # (n_inst, 169)
+        weight_new = produce_inst_weight(weight, nums, batch_size)
+        # produce feat(1, n_inst*10, H, W)
+        feat_new = produce_mask_head_inputs(seg_feat, nums, x_grid, y_grid, x, y, batch_size)
+        weight_nums, bias_nums = produce_nums(num_layers=3, in_channels=8, channels=8)
+        weights, biases = parse_dynamic_params(weight_new, 8, weight_nums, bias_nums)
+
+        num_inst = nums.sum().item()
+        mask_scores = forward_mask_parallel(feat_new, weights, biases, num_inst).sigmoid()[0]
+        mask_gts = get_true_masks(target, nums, batch_size)
+        mask_loss_new = dice_loss(mask_scores.float(), mask_gts.float())
+
+        # print(mask_scores.size(), mask_gts.size())
+        # (1, 6, 128, 128) (6, 128, 128)
+        # print(nums)
+        # print(weight_new.size(), feat_new.size(), num_inst, mask_scores.size())
+        # (28, 169) (1, 280, 128, 128) 28 (1, 28, 128, 128)
+        # mask_loss =
+
+#         for i in range(batch_size):  # the computation is quite slow...
+#             num_obj = target[i].size(0)
+#             conv1w, conv1b, conv2w, conv2b, conv3w, conv3b = \
+#                 torch.split(weight[i, :num_obj], [(self.feat_channel + 2) * self.feat_channel, self.feat_channel,
+#                                                   self.feat_channel ** 2, self.feat_channel,
+#                                                   self.feat_channel, 1], dim=-1)
+
+#             y_rel_coord = (y_grid[None, None] - y[i, :num_obj].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).float()) / 128.
+#             x_rel_coord = (x_grid[None, None] - x[i, :num_obj].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).float()) / 128.
+
+#             feat = seg_feat[i][None].repeat([num_obj, 1, 1, 1])
+#             feat = torch.cat([feat, x_rel_coord, y_rel_coord], dim=1).view(1, -1, h, w)
+
+#             conv1w = conv1w.contiguous().view(-1, self.feat_channel + 2, 1, 1)
+#             conv1b = conv1b.contiguous().view(-1)  # .flatten() -> .view(-1)
+#             feat = F.conv2d(feat, conv1w, conv1b, groups=num_obj).relu()
+
+#             conv2w = conv2w.contiguous().view(-1, self.feat_channel, 1, 1)
+#             conv2b = conv2b.contiguous().view(-1)  #
+#             feat = F.conv2d(feat, conv2w, conv2b, groups=num_obj).relu()
+
+#             conv3w = conv3w.contiguous().view(-1, self.feat_channel, 1, 1)
+#             conv3b = conv3b.contiguous().view(-1)  #
+#             feat = F.conv2d(feat, conv3w, conv3b, groups=num_obj).sigmoid().squeeze()
+
+#             true_mask = mask[i, :num_obj, None, None].float()
+#             # print(target[i].size(), true_mask.size(), i)
+#             # (7, 128, 128) (7, 1, 1)
+#             mask_loss += dice_loss(feat * true_mask, target[i] * true_mask)
+            # print(true_mask.size(), (feat*true_mask).size(), (target[i]*true_mask).size())
+            # (7, 1, 1) (7, 128, 128) (7, 128, 128)
+#         print(mask_loss, mask_loss_new)
+        return mask_loss_new / batch_size
+
 
 class NormRegL1Loss(nn.Module):
   def __init__(self):

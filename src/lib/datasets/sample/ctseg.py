@@ -89,6 +89,7 @@ class CTSegDataset(data.Dataset):
         dense_wh = np.zeros((2, output_h, output_w), dtype=np.float32)
         reg = np.zeros((self.max_objs, 2), dtype=np.float32)
         ind = np.zeros((self.max_objs), dtype=np.int64)
+        # ind_
         reg_mask = np.zeros((self.max_objs), dtype=np.uint8)
         cat_spec_wh = np.zeros((self.max_objs, num_classes * 2), dtype=np.float32)
         cat_spec_mask = np.zeros((self.max_objs, num_classes * 2), dtype=np.uint8)
@@ -139,7 +140,8 @@ class CTSegDataset(data.Dataset):
                                ct[0] + w / 2, ct[1] + h / 2, 1, cls_id])
 
         ret = {'input': inp, 'hm': hm, 'reg_mask': reg_mask, 'ind': ind, 'wh': wh,
-               "instance_mask":instance_masks}
+               "instance_mask":instance_masks, 'instance_num':num_objs}
+        # print(ind.shape)
         if self.opt.dense_wh:
             hm_a = hm.max(axis=0, keepdims=True)
             dense_wh_mask = np.concatenate([hm_a, hm_a], axis=0)
