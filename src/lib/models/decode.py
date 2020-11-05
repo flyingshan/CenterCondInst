@@ -576,6 +576,61 @@ def ctseg_decode_2(heat, wh, seg_feat, conv_weight, reg=None, cat_spec_wh=False,
             -1).float()) / 128.
         x_rel_coord = (x_grid[None, None] - x[0, :num_obj].unsqueeze(-1).unsqueeze(
             -1).float()) / 128.
+        # ([25, 1, 128, 128]) torch.Size([25, 1, 128, 128])
+        # print(x_rel_coord.size(), y_rel_coord.size())
+        # ([1, 25, 1]) torch.Size([1, 25, 1])
+        # print(x.size(), y.size())
+        # (128,128)
+        # print(x_grid.size())
+        # torch.Size([1, 1, 128, 128]) torch.Size([25, 1, 1, 1])
+        # print(y_grid[None, None].size(), y[0, :num_obj].unsqueeze(-1).unsqueeze(
+        #     -1).size())
+        
+        # print((x_grid[None, None] - x[0, :num_obj].unsqueeze(-1).unsqueeze(
+        #     -1).float()).size())
+        """
+        (x_grid[None, None] - x[0, :num_obj].unsqueeze(-1).unsqueeze(
+            -1).float()) / 128.
+        这句话解释如下：
+        （1）x_grid[None, None]：[1, 1, 128, 128]
+        （2）x[0, :num_obj].unsqueeze(-1).unsqueeze(-1)：[25, 1, 1, 1]
+        对于前面一个元素（1），x_grid和y_grid分别是在x和y方向逐渐
+        从0增长到127的一个递增序列
+        对于后一个元素（2），x和y分别表示了K个可疑的中心点的坐标
+        两者相减，得到size为[25, 1, 128, 128]的东西，意义是，
+        首先，目标是对于x与y分别生成一个coord图
+        假设目前讨论的是x-coord图
+        对于每一个可疑中心点k，生成一个(128,128)的x图，图中每点表示
+        它在该图中的x坐标，对于每一个中心点，都让一个x图减去这个
+        中心点的x坐标，然后/128归一化。
+        综上：
+        这里的x_rel_coord图中每一点都表示的是该点与中心点的相对位置
+        """
+
+        """
+        x_grid:
+        0 1... 127
+        .    .
+        .    .
+        .    .
+        0 1... 127
+
+        y_grid:
+        0 ... 0
+        1    1
+        .    .
+        .    .
+        .    .
+        127 ...127
+        """
+        '''
+        x,y: (1,K,1) 值在0~128（下采样分辨率）之间
+        '''
+
+        # print(x)
+        # print(y)
+        # print(x_rel_coord[0,0,:,0])
+        # print(x_rel_coord[0,0,0,:])
         feat = seg_feat[0][None].repeat([num_obj, 1, 1, 1])
         # print(y_grid.size(), y_grid[None, None].size())
         # print(feat.size(), x_rel_coord.size(), y_rel_coord.size())
